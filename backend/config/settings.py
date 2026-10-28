@@ -43,7 +43,8 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "accounts",
-    "vendors"
+    "vendors",
+    "invoices",
 ]
 
 MIDDLEWARE = [
