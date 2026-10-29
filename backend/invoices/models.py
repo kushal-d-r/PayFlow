@@ -115,3 +115,61 @@ class Invoice(models.Model):
 
     def __str__(self):
         return f"{self.invoice_number} - {self.vendor.legal_name}"
+
+
+
+class InvoiceDocument(models.Model):
+    class ProcessingStatus(models.TextChoices):
+        UPLOADED = "UPLOADED", "Uploaded"
+        PROCESSING = "PROCESSING", "Processing"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+
+    class DocumentType(models.TextChoices):
+        PDF = "PDF", "PDF"
+        JPEG = "JPEG", "JPEG"
+        PNG = "PNG", "PNG"
+
+    file = models.FileField(
+        upload_to="invoice_documents/%Y/%m/"
+    )
+
+    original_filename = models.CharField(max_length=255)
+
+    document_type = models.CharField(
+        max_length=10,
+        choices=DocumentType.choices,
+    )
+
+    processing_status = models.CharField(
+        max_length=20,
+        choices=ProcessingStatus.choices,
+        default=ProcessingStatus.UPLOADED,
+        db_index=True,
+    )
+
+    extracted_text = models.TextField(blank=True)
+
+    error_message = models.TextField(blank=True)
+
+    created_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.PROTECT,
+        related_name="uploaded_invoice_documents",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    processed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return (
+            f"{self.original_filename} "
+            f"({self.processing_status})"
+        )
