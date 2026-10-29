@@ -1,9 +1,19 @@
+import re
+from pathlib import Path
+
+import pymupdf
+from PIL import Image
+
 from rest_framework import serializers
 
-from .models import Invoice
+from .models import Invoice, InvoiceDocument
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
+    """
+    Serializer for invoice records.
+    """
+
     vendor_name = serializers.CharField(
         source="vendor.legal_name",
         read_only=True,
@@ -16,6 +26,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Invoice
+
         fields = [
             "id",
             "vendor",
@@ -45,33 +56,46 @@ class InvoiceSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        # On updates, use existing values for omitted fields.
+        """
+        Validate invoice dates and monetary amounts.
+        Supports both creation and partial updates.
+        """
         instance = getattr(self, "instance", None)
 
         invoice_date = attrs.get(
             "invoice_date",
             getattr(instance, "invoice_date", None),
         )
+
         due_date = attrs.get(
             "due_date",
             getattr(instance, "due_date", None),
         )
+
         subtotal = attrs.get(
             "subtotal",
             getattr(instance, "subtotal", None),
         )
+
         tax_amount = attrs.get(
             "tax_amount",
             getattr(instance, "tax_amount", None),
         )
+
         total_amount = attrs.get(
             "total_amount",
             getattr(instance, "total_amount", None),
         )
 
-        if invoice_date and due_date and due_date < invoice_date:
+        if (
+            invoice_date
+            and due_date
+            and due_date < invoice_date
+        ):
             raise serializers.ValidationError({
-                "due_date": "Due date cannot be earlier than invoice date."
+                "due_date": (
+                    "Due date cannot be earlier than invoice date."
+                )
             })
 
         if (
@@ -82,8 +106,175 @@ class InvoiceSerializer(serializers.ModelSerializer):
         ):
             raise serializers.ValidationError({
                 "total_amount": (
-                    "Total amount cannot be less than subtotal plus tax."
+                    "Total amount cannot be less than "
+                    "subtotal plus tax."
                 )
             })
 
         return attrs
+
+
+class InvoiceDocumentSerializer(serializers.ModelSerializer):
+    """
+    Serializer for uploading invoice documents
+    and returning their OCR processing results.
+    """
+
+    file = serializers.FileField(write_only=True)
+
+    created_by_username = serializers.CharField(
+        source="created_by.username",
+        read_only=True,
+    )
+
+    class Meta:
+        model = InvoiceDocument
+
+        fields = [
+            "id",
+            "file",
+            "original_filename",
+            "document_type",
+            "processing_status",
+            "extracted_text",
+            "error_message",
+            "created_by",
+            "created_by_username",
+            "created_at",
+            "processed_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "original_filename",
+            "document_type",
+            "processing_status",
+            "extracted_text",
+            "error_message",
+            "created_by",
+            "created_by_username",
+            "created_at",
+            "processed_at",
+        ]
+
+    def validate_file(self, uploaded_file):
+        """
+        Validate file size, extension, signature, and readability.
+        """
+        max_size = 10 * 1024 * 1024  # 10 MB
+
+        if uploaded_file.size == 0:
+            raise serializers.ValidationError(
+                "The uploaded file is empty."
+            )
+
+        if uploaded_file.size > max_size:
+            raise serializers.ValidationError(
+                "File size must not exceed 10 MB."
+            )
+
+        extension = Path(
+            uploaded_file.name
+        ).suffix.lower()
+
+        supported_extensions = {
+            ".pdf": "PDF",
+            ".jpg": "JPEG",
+            ".jpeg": "JPEG",
+            ".png": "PNG",
+        }
+
+        if extension not in supported_extensions:
+            raise serializers.ValidationError(
+                "Only PDF, JPG, JPEG, and PNG files are supported."
+            )
+
+        expected_type = supported_extensions[extension]
+
+        try:
+            uploaded_file.seek(0)
+
+            if expected_type == "PDF":
+                signature = uploaded_file.read(5)
+                uploaded_file.seek(0)
+
+                if signature != b"%PDF-":
+                    raise serializers.ValidationError(
+                        "The file does not have a valid PDF signature."
+                    )
+
+                content = uploaded_file.read()
+                uploaded_file.seek(0)
+
+                with pymupdf.open(
+                    stream=content,
+                    filetype="pdf",
+                ) as pdf:
+                    if len(pdf) == 0:
+                        raise serializers.ValidationError(
+                            "The PDF contains no pages."
+                        )
+
+                    if len(pdf) > 30:
+                        raise serializers.ValidationError(
+                            "PDFs must contain no more than 30 pages."
+                        )
+
+            else:
+                with Image.open(uploaded_file) as image:
+                    actual_format = image.format
+
+                    expected_image_format = {
+                        "JPEG": "JPEG",
+                        "PNG": "PNG",
+                    }[expected_type]
+
+                    if actual_format != expected_image_format:
+                        raise serializers.ValidationError(
+                            "The file extension does not match "
+                            "the image format."
+                        )
+
+                    image.verify()
+
+        except serializers.ValidationError:
+            raise
+
+        except Exception as exc:
+            raise serializers.ValidationError(
+                "The file is invalid, corrupted, or unreadable."
+            ) from exc
+
+        finally:
+            uploaded_file.seek(0)
+
+        return uploaded_file
+
+    def create(self, validated_data):
+        """
+        Save the uploaded file and record its metadata.
+        """
+        uploaded_file = validated_data["file"]
+        request = self.context["request"]
+
+        extension = Path(
+            uploaded_file.name
+        ).suffix.lower()
+
+        document_type = {
+            ".pdf": "PDF",
+            ".jpg": "JPEG",
+            ".jpeg": "JPEG",
+            ".png": "PNG",
+        }[extension]
+
+        document = InvoiceDocument.objects.create(
+            file=uploaded_file,
+            original_filename=Path(
+                uploaded_file.name
+            ).name[:255],
+            document_type=document_type,
+            created_by=request.user,
+        )
+
+        return document
