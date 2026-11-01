@@ -13,6 +13,8 @@ from rest_framework_simplejwt.views import (
 urlpatterns = [
     # Django Admin
     path("admin/", admin.site.urls),
+    path("api/", include("purchase_orders.urls")),
+    path("api/", include("goods_receipts.urls")),
 
     # JWT Authentication
     path("api/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
