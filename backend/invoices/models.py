@@ -1,3 +1,4 @@
+
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -51,8 +52,6 @@ class Invoice(models.Model):
         validators=[MinValueValidator(0)],
     )
 
-    # Initial upload field. We will add upload validation
-    # and private file storage before production use.
     document = models.FileField(
         upload_to="invoices/%Y/%m/",
         blank=True,
@@ -117,8 +116,8 @@ class Invoice(models.Model):
         return f"{self.invoice_number} - {self.vendor.legal_name}"
 
 
-
 class InvoiceDocument(models.Model):
+
     class ProcessingStatus(models.TextChoices):
         UPLOADED = "UPLOADED", "Uploaded"
         PROCESSING = "PROCESSING", "Processing"
@@ -150,10 +149,16 @@ class InvoiceDocument(models.Model):
 
     extracted_text = models.TextField(blank=True)
 
+    # Stores structured invoice fields extracted from OCR text.
+    extracted_data = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
     error_message = models.TextField(blank=True)
 
     created_by = models.ForeignKey(
-        "accounts.User",
+        settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         related_name="uploaded_invoice_documents",
     )
