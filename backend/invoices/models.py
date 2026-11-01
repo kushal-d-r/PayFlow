@@ -58,6 +58,16 @@ class Invoice(models.Model):
         null=True,
     )
 
+    # Links the invoice to its original uploaded document.
+    # One uploaded document can create only one invoice.
+    source_document = models.OneToOneField(
+        "InvoiceDocument",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="created_invoice",
+    )
+
     status = models.CharField(
         max_length=30,
         choices=Status.choices,
@@ -78,16 +88,20 @@ class Invoice(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
         constraints = [
             models.UniqueConstraint(
                 fields=["vendor", "invoice_number"],
                 name="unique_invoice_number_per_vendor",
             ),
             models.CheckConstraint(
-                condition=Q(due_date__gte=models.F("invoice_date")),
+                condition=Q(
+                    due_date__gte=models.F("invoice_date")
+                ),
                 name="invoice_due_date_gte_invoice_date",
             ),
         ]
+
         indexes = [
             models.Index(fields=["status", "due_date"]),
             models.Index(fields=["invoice_date"]),

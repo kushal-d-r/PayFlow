@@ -10,3 +10,10 @@ staticfiles/
 node_modules/
 dist/
 .vscode/
+
+.env
+.venv/
+__pycache__/
+*.pyc
+private_uploads/
+media/

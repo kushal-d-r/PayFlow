@@ -137,11 +137,12 @@ class InvoiceDocumentSerializer(serializers.ModelSerializer):
             "document_type",
             "processing_status",
             "extracted_text",
+            "extracted_data",
             "error_message",
             "created_by",
-            "created_by_username",
             "created_at",
             "processed_at",
+            "source_document",
         ]
 
         read_only_fields = [
@@ -155,6 +156,8 @@ class InvoiceDocumentSerializer(serializers.ModelSerializer):
             "created_by_username",
             "created_at",
             "processed_at",
+            "source_document",
+            "extracted_data"
         ]
 
     def validate_file(self, uploaded_file):
