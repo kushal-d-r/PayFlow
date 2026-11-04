@@ -1,27 +1,89 @@
+
 import re
 from pathlib import Path
 
 import pymupdf
 from PIL import Image
 
+from django.db import transaction
 from rest_framework import serializers
 
-from .models import Invoice, InvoiceDocument
+from .models import Invoice, InvoiceItem, InvoiceDocument
 
+
+# ============================================================
+# INVOICE ITEM SERIALIZER
+# ============================================================
+
+class InvoiceItemSerializer(serializers.ModelSerializer):
+
+    subtotal = serializers.DecimalField(
+        max_digits=16,
+        decimal_places=2,
+        read_only=True
+    )
+
+    tax_amount = serializers.DecimalField(
+        max_digits=16,
+        decimal_places=2,
+        read_only=True
+    )
+
+    total_amount = serializers.DecimalField(
+        max_digits=16,
+        decimal_places=2,
+        read_only=True
+    )
+
+    class Meta:
+        model = InvoiceItem
+
+        fields = [
+            "id",
+            "line_number",
+            "purchase_order_item",
+            "description",
+            "quantity",
+            "unit_price",
+            "tax_rate",
+            "subtotal",
+            "tax_amount",
+            "total_amount",
+        ]
+
+        read_only_fields = [
+            "id",
+            "subtotal",
+            "tax_amount",
+            "total_amount",
+        ]
+
+
+# ============================================================
+# INVOICE SERIALIZER
+# ============================================================
 
 class InvoiceSerializer(serializers.ModelSerializer):
-    """
-    Serializer for invoice records.
-    """
 
     vendor_name = serializers.CharField(
         source="vendor.legal_name",
         read_only=True,
     )
 
+    purchase_order_number = serializers.CharField(
+        source="purchase_order.po_number",
+        read_only=True,
+        allow_null=True,
+    )
+
     created_by_username = serializers.CharField(
         source="created_by.username",
         read_only=True,
+    )
+
+    items = InvoiceItemSerializer(
+        many=True,
+        required=False,
     )
 
     class Meta:
@@ -31,6 +93,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "id",
             "vendor",
             "vendor_name",
+            "purchase_order",
+            "purchase_order_number",
             "invoice_number",
             "invoice_date",
             "due_date",
@@ -41,6 +105,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "document",
             "status",
             "notes",
+            "items",
             "created_by",
             "created_by_username",
             "created_at",
@@ -56,10 +121,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        """
-        Validate invoice dates and monetary amounts.
-        Supports both creation and partial updates.
-        """
+
         instance = getattr(self, "instance", None)
 
         invoice_date = attrs.get(
@@ -87,6 +149,19 @@ class InvoiceSerializer(serializers.ModelSerializer):
             getattr(instance, "total_amount", None),
         )
 
+        vendor = attrs.get(
+            "vendor",
+            getattr(instance, "vendor", None),
+        )
+
+        purchase_order = attrs.get(
+            "purchase_order",
+            getattr(instance, "purchase_order", None),
+        )
+
+        items = attrs.get("items")
+
+        # Validate invoice dates.
         if (
             invoice_date
             and due_date
@@ -98,6 +173,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
                 )
             })
 
+        # Validate invoice monetary amounts.
         if (
             subtotal is not None
             and tax_amount is not None
@@ -111,14 +187,121 @@ class InvoiceSerializer(serializers.ModelSerializer):
                 )
             })
 
+        # Validate vendor and purchase order relationship.
+        if (
+            purchase_order
+            and vendor
+            and purchase_order.vendor_id != vendor.id
+        ):
+            raise serializers.ValidationError({
+                "purchase_order": (
+                    "The purchase order must belong "
+                    "to the invoice vendor."
+                )
+            })
+
+        # Validate invoice line items.
+        if items is not None:
+
+            if not purchase_order:
+                raise serializers.ValidationError({
+                    "items": (
+                        "A purchase order is required "
+                        "when invoice line items are provided."
+                    )
+                })
+
+            line_numbers = set()
+
+            for item in items:
+
+                po_item = item["purchase_order_item"]
+
+                if po_item.purchase_order_id != purchase_order.id:
+                    raise serializers.ValidationError({
+                        "items": (
+                            f"PO item {po_item.id} does not belong "
+                            "to the selected purchase order."
+                        )
+                    })
+
+                line_number = item["line_number"]
+
+                if line_number in line_numbers:
+                    raise serializers.ValidationError({
+                        "items": (
+                            "Invoice line numbers must be unique."
+                        )
+                    })
+
+                line_numbers.add(line_number)
+
+        # Prevent changing the purchase order without updating
+        # existing invoice line items.
+        if (
+            instance
+            and "purchase_order" in attrs
+            and "items" not in attrs
+            and instance.items.exists()
+            and (
+                purchase_order is None
+                or instance.purchase_order_id != purchase_order.id
+            )
+        ):
+            raise serializers.ValidationError({
+                "items": (
+                    "Provide updated invoice line items "
+                    "when changing the purchase order."
+                )
+            })
+
         return attrs
 
+    @transaction.atomic
+    def create(self, validated_data):
+
+        items_data = validated_data.pop("items", [])
+
+        invoice = Invoice.objects.create(
+            **validated_data
+        )
+
+        for item_data in items_data:
+            InvoiceItem.objects.create(
+                invoice=invoice,
+                **item_data
+            )
+
+        return invoice
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+
+        items_data = validated_data.pop("items", None)
+
+        invoice = super().update(
+            instance,
+            validated_data
+        )
+
+        if items_data is not None:
+
+            invoice.items.all().delete()
+
+            for item_data in items_data:
+                InvoiceItem.objects.create(
+                    invoice=invoice,
+                    **item_data
+                )
+
+        return invoice
+
+
+# ============================================================
+# INVOICE DOCUMENT SERIALIZER (OCR UPLOAD)
+# ============================================================
 
 class InvoiceDocumentSerializer(serializers.ModelSerializer):
-    """
-    Serializer for uploading invoice documents
-    and returning their OCR processing results.
-    """
 
     file = serializers.FileField(write_only=True)
 
@@ -140,6 +323,7 @@ class InvoiceDocumentSerializer(serializers.ModelSerializer):
             "extracted_data",
             "error_message",
             "created_by",
+            "created_by_username",
             "created_at",
             "processed_at",
             "source_document",
@@ -157,13 +341,11 @@ class InvoiceDocumentSerializer(serializers.ModelSerializer):
             "created_at",
             "processed_at",
             "source_document",
-            "extracted_data"
+            "extracted_data",
         ]
 
     def validate_file(self, uploaded_file):
-        """
-        Validate file size, extension, signature, and readability.
-        """
+
         max_size = 10 * 1024 * 1024  # 10 MB
 
         if uploaded_file.size == 0:
@@ -198,6 +380,7 @@ class InvoiceDocumentSerializer(serializers.ModelSerializer):
             uploaded_file.seek(0)
 
             if expected_type == "PDF":
+
                 signature = uploaded_file.read(5)
                 uploaded_file.seek(0)
 
@@ -213,6 +396,7 @@ class InvoiceDocumentSerializer(serializers.ModelSerializer):
                     stream=content,
                     filetype="pdf",
                 ) as pdf:
+
                     if len(pdf) == 0:
                         raise serializers.ValidationError(
                             "The PDF contains no pages."
@@ -224,7 +408,9 @@ class InvoiceDocumentSerializer(serializers.ModelSerializer):
                         )
 
             else:
+
                 with Image.open(uploaded_file) as image:
+
                     actual_format = image.format
 
                     expected_image_format = {
@@ -254,9 +440,7 @@ class InvoiceDocumentSerializer(serializers.ModelSerializer):
         return uploaded_file
 
     def create(self, validated_data):
-        """
-        Save the uploaded file and record its metadata.
-        """
+
         uploaded_file = validated_data["file"]
         request = self.context["request"]
 

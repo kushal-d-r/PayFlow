@@ -19,6 +19,7 @@ from .serializers import (
 )
 
 from .services.processing import process_invoice_document
+from .services.matching import match_invoice
 
 
 logger = logging.getLogger(__name__)
@@ -67,10 +68,50 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             "vendor",
             "created_by",
             "source_document",
+            "purchase_order",
         ).all()
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="match",
+    )
+    def match(self, request, pk=None):
+        """
+        Perform three-way matching for an invoice.
+
+        Compares:
+        Invoice <-> Purchase Order <-> Goods Receipts
+        """
+
+        invoice = self.get_object()
+
+        try:
+            result = match_invoice(invoice)
+
+            return Response(
+                result,
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception:
+            logger.exception(
+                "Three-way matching failed for invoice ID %s",
+                invoice.pk,
+            )
+
+            return Response(
+                {
+                    "error": (
+                        "An unexpected error occurred "
+                        "while matching the invoice."
+                    )
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 class InvoiceDocumentViewSet(viewsets.ModelViewSet):
@@ -115,7 +156,6 @@ class InvoiceDocumentViewSet(viewsets.ModelViewSet):
         )
 
         try:
-            # Run OCR, extraction, validation and duplicate checking.
             result = process_invoice_document(document)
 
             document.extracted_text = result["extracted_text"]
@@ -171,7 +211,6 @@ class InvoiceDocumentViewSet(viewsets.ModelViewSet):
 
         document = self.get_object()
 
-        # Check OCR processing status.
         if (
             document.processing_status
             != InvoiceDocument.ProcessingStatus.COMPLETED
@@ -183,7 +222,6 @@ class InvoiceDocumentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Prevent multiple invoices from the same document.
         if hasattr(document, "created_invoice"):
             return Response(
                 {
@@ -196,7 +234,6 @@ class InvoiceDocumentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        # Validate corrected invoice details.
         serializer = InvoiceSerializer(
             data=request.data,
             context={"request": request},

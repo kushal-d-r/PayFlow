@@ -1,4 +1,3 @@
-
 from django.db import transaction
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -13,6 +12,9 @@ class GoodsReceiptViewSet(viewsets.ModelViewSet):
 
     serializer_class = GoodsReceiptSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    # GRNs cannot be modified or deleted after creation.
+    http_method_names = ["get", "post", "head", "options"]
 
     filter_backends = [
         DjangoFilterBackend,
@@ -44,6 +46,7 @@ class GoodsReceiptViewSet(viewsets.ModelViewSet):
         ).prefetch_related("items")
 
     def create(self, request, *args, **kwargs):
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

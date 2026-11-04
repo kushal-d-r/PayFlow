@@ -26,6 +26,22 @@ class Invoice(models.Model):
         on_delete=models.PROTECT,
         related_name="invoices",
     )
+    
+    
+    
+    purchase_order = models.ForeignKey(
+        "purchase_orders.PurchaseOrder",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="invoices",
+    )
+    
+    
+    
+    
+    
+    
 
     invoice_number = models.CharField(max_length=100)
     invoice_date = models.DateField()
@@ -128,6 +144,104 @@ class Invoice(models.Model):
 
     def __str__(self):
         return f"{self.invoice_number} - {self.vendor.legal_name}"
+
+
+class InvoiceItem(models.Model):
+
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
+
+    purchase_order_item = models.ForeignKey(
+        "purchase_orders.PurchaseOrderItem",
+        on_delete=models.PROTECT,
+        related_name="invoice_items",
+    )
+
+    line_number = models.PositiveIntegerField()
+
+    description = models.TextField()
+
+    quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        validators=[MinValueValidator(0)],
+    )
+
+    unit_price = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+    )
+
+    tax_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+    )
+
+    class Meta:
+        ordering = ["line_number"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["invoice", "line_number"],
+                name="unique_invoice_line_number",
+            ),
+            models.CheckConstraint(
+                condition=Q(quantity__gt=0),
+                name="invoice_item_quantity_positive",
+            ),
+            models.CheckConstraint(
+                condition=Q(unit_price__gte=0),
+                name="invoice_item_price_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=Q(tax_rate__gte=0) & Q(tax_rate__lte=100),
+                name="invoice_item_tax_rate_valid",
+            ),
+        ]
+
+    @property
+    def subtotal(self):
+        return self.quantity * self.unit_price
+
+    @property
+    def tax_amount(self):
+        return self.subtotal * self.tax_rate / 100
+
+    @property
+    def total_amount(self):
+        return self.subtotal + self.tax_amount
+
+    def clean(self):
+        super().clean()
+
+        if (
+            self.invoice_id
+            and self.purchase_order_item_id
+            and self.invoice.purchase_order_id
+            and self.purchase_order_item.purchase_order_id
+            != self.invoice.purchase_order_id
+        ):
+            raise ValidationError({
+                "purchase_order_item": (
+                    "This item does not belong to the invoice's purchase order."
+                )
+            })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return (
+            f"{self.invoice.invoice_number} "
+            f"- Line {self.line_number}"
+        )
+
 
 
 class InvoiceDocument(models.Model):
