@@ -7,6 +7,7 @@ from .models import (
     ApprovalStep,
     ApprovalHistory,
 )
+from invoices.serializers import InvoiceSerializer
 
 
 class ApprovalRuleSerializer(serializers.ModelSerializer):
@@ -118,6 +119,7 @@ class ApprovalHistorySerializer(serializers.ModelSerializer):
 
 
 class ApprovalRequestSerializer(serializers.ModelSerializer):
+    invoice_details = InvoiceSerializer(source="invoice", read_only=True)
     invoice_number = serializers.CharField(
         source="invoice.invoice_number",
         read_only=True,
@@ -137,6 +139,7 @@ class ApprovalRequestSerializer(serializers.ModelSerializer):
             "id",
             "invoice",
             "invoice_number",
+            "invoice_details",
             "status",
             "amount_snapshot",
             "currency_snapshot",

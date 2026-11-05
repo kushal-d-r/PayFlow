@@ -2,7 +2,7 @@
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.db.models import Sum
+from django.db.models import Q, Sum
 
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -144,27 +144,62 @@ class PaymentViewSet(viewsets.ModelViewSet):
             total=Sum("amount")
         )["total"] or Decimal("0.00")
 
-        invoice_ids = payments.values_list(
-            "invoice_id",
-            flat=True,
-        ).distinct()
+        payment_groups = payments.values("currency").annotate(
+            completed=Sum("amount", filter=Q(status=Payment.Status.COMPLETED)),
+            pending=Sum("amount", filter=Q(status__in=[Payment.Status.PENDING, Payment.Status.PROCESSING])),
+            failed=Sum("amount", filter=Q(status=Payment.Status.FAILED)),
+        )
 
         invoices = Invoice.objects.filter(
-            id__in=invoice_ids,
             status__in=[
                 Invoice.Status.APPROVED,
                 Invoice.Status.PAYMENT_PENDING,
                 Invoice.Status.PAID,
             ],
         )
+        user = request.user
+        if not (
+            user.is_superuser
+            or user.role in ["ADMIN", "FINANCE_MANAGER", "AUDITOR"]
+        ):
+            invoices = invoices.filter(created_by=user)
 
-        invoice_total = invoices.aggregate(
+        invoice_groups = invoices.values("currency").annotate(
             total=Sum("total_amount")
-        )["total"] or Decimal("0.00")
-
-        outstanding_total = (
-            invoice_total - completed_total
         )
+        invoice_total = sum(
+            (row["total"] or Decimal("0.00") for row in invoice_groups),
+            Decimal("0.00"),
+        )
+        completed_by_currency = {
+            row["currency"]: row["completed"] or Decimal("0.00")
+            for row in payment_groups
+        }
+        invoice_by_currency = {
+            row["currency"]: row["total"] or Decimal("0.00")
+            for row in invoice_groups
+        }
+        currency_summary = []
+        for currency in sorted(set(invoice_by_currency) | set(completed_by_currency) | {
+            row["currency"] for row in payment_groups
+        }):
+            grouped_payment = next(
+                (row for row in payment_groups if row["currency"] == currency),
+                {},
+            )
+            completed = grouped_payment.get("completed") or Decimal("0.00")
+            currency_summary.append({
+                "currency": currency,
+                "completed_payment_total": completed,
+                "pending_payment_total": grouped_payment.get("pending") or Decimal("0.00"),
+                "failed_payment_total": grouped_payment.get("failed") or Decimal("0.00"),
+                "outstanding_total": max(
+                    invoice_by_currency.get(currency, Decimal("0.00")) - completed,
+                    Decimal("0.00"),
+                ),
+            })
+
+        outstanding_total = max(invoice_total - completed_total, Decimal("0.00"))
 
         return Response({
             "completed_payment_total": completed_total,
@@ -174,6 +209,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 outstanding_total,
                 Decimal("0.00"),
             ),
+            "currency_summary": currency_summary,
         })
 
     # --------------------------------------------------

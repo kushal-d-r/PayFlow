@@ -10,9 +10,11 @@ from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
+from reports.views import summary as report_summary
 
 
 urlpatterns = [
+    path("api/reports/summary/", report_summary, name="report-summary"),
     # Django Admin
     path("admin/", admin.site.urls),
 

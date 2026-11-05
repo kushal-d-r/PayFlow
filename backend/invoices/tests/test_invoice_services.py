@@ -36,6 +36,16 @@ class InvoiceExtractionTests(SimpleTestCase):
             "11800.00"
         )
 
+    def test_extracts_clear_table_line_item_candidates(self):
+        result = extract_invoice_data("""
+        1 | Laptop Pro | 2 | 50000.00 | 18% | 118000.00
+        Subtotal: 100000.00
+        """)
+        self.assertEqual(len(result["line_items"]), 1)
+        self.assertEqual(result["line_items"][0]["description"], "Laptop Pro")
+        self.assertEqual(result["line_items"][0]["quantity"], "2")
+        self.assertEqual(result["line_items"][0]["unit_price"], "50000.00")
+
 
 class InvoiceValidationTests(SimpleTestCase):
 

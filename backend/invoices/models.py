@@ -256,6 +256,7 @@ class InvoiceDocument(models.Model):
         PDF = "PDF", "PDF"
         JPEG = "JPEG", "JPEG"
         PNG = "PNG", "PNG"
+        TIFF = "TIFF", "TIFF"
 
     file = models.FileField(
         upload_to="invoice_documents/%Y/%m/"

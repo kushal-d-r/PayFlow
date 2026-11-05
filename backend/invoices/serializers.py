@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pymupdf
 from PIL import Image
+from decimal import Decimal
 
 from django.db import transaction
 from rest_framework import serializers
@@ -174,18 +175,20 @@ class InvoiceSerializer(serializers.ModelSerializer):
             })
 
         # Validate invoice monetary amounts.
+        # Validate invoice monetary amounts.
         if (
             subtotal is not None
             and tax_amount is not None
             and total_amount is not None
-            and total_amount < subtotal + tax_amount
         ):
-            raise serializers.ValidationError({
-                "total_amount": (
-                    "Total amount cannot be less than "
-                    "subtotal plus tax."
-                )
-            })
+            expected_total = subtotal + tax_amount
+
+            if abs(total_amount - expected_total) > Decimal("0.01"):
+                raise serializers.ValidationError({
+                    "total_amount": (
+                        "Total amount must equal subtotal plus tax."
+                    )
+                })
 
         # Validate vendor and purchase order relationship.
         if (
@@ -326,7 +329,6 @@ class InvoiceDocumentSerializer(serializers.ModelSerializer):
             "created_by_username",
             "created_at",
             "processed_at",
-            "source_document",
         ]
 
         read_only_fields = [
@@ -367,11 +369,13 @@ class InvoiceDocumentSerializer(serializers.ModelSerializer):
             ".jpg": "JPEG",
             ".jpeg": "JPEG",
             ".png": "PNG",
+            ".tif": "TIFF",
+            ".tiff": "TIFF",
         }
 
         if extension not in supported_extensions:
             raise serializers.ValidationError(
-                "Only PDF, JPG, JPEG, and PNG files are supported."
+                "Only PDF, JPG, JPEG, PNG, TIF, and TIFF files are supported."
             )
 
         expected_type = supported_extensions[extension]
@@ -416,6 +420,7 @@ class InvoiceDocumentSerializer(serializers.ModelSerializer):
                     expected_image_format = {
                         "JPEG": "JPEG",
                         "PNG": "PNG",
+                        "TIFF": "TIFF",
                     }[expected_type]
 
                     if actual_format != expected_image_format:
@@ -453,6 +458,8 @@ class InvoiceDocumentSerializer(serializers.ModelSerializer):
             ".jpg": "JPEG",
             ".jpeg": "JPEG",
             ".png": "PNG",
+            ".tif": "TIFF",
+            ".tiff": "TIFF",
         }[extension]
 
         document = InvoiceDocument.objects.create(

@@ -1,5 +1,5 @@
 
-from invoices.services.ocr import extract_text_from_document
+from invoices.services.ocr import extract_text_with_confidence
 from invoices.services.extraction import extract_invoice_data
 from invoices.services.validation import validate_invoice_data
 from invoices.services.duplicate import check_duplicate_invoice
@@ -16,7 +16,7 @@ def process_invoice_document(document):
     """
 
     # 1. Extract raw text using OCR
-    extracted_text = extract_text_from_document(
+    extracted_text, ocr_confidence = extract_text_with_confidence(
         document.file.path,
         document.document_type,
     )
@@ -28,9 +28,22 @@ def process_invoice_document(document):
 
     # 2. Extract structured invoice fields
     extracted_data = extract_invoice_data(extracted_text)
+    extracted_data["ocr_confidence"] = (
+        round(ocr_confidence, 1) if ocr_confidence is not None else None
+    )
+    extracted_data["ocr_confidence_label"] = (
+        "High" if ocr_confidence is not None and ocr_confidence >= 85
+        else "Review" if ocr_confidence is not None and ocr_confidence >= 65
+        else "Low" if ocr_confidence is not None
+        else "Not measured (text PDF)"
+    )
 
     # 3. Validate extracted fields
     validation_result = validate_invoice_data(extracted_data)
+    if ocr_confidence is not None and ocr_confidence < 65:
+        validation_result["warnings"].append(
+            "OCR confidence is low. Verify extracted fields against the document."
+        )
 
     # 4. Match vendor using GSTIN
     gstin = extracted_data.get("gstin")

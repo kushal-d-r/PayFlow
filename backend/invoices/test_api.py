@@ -1,5 +1,11 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from io import BytesIO
+import tempfile
+from unittest.mock import patch
+from PIL import Image
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from purchase_orders.models import PurchaseOrder, PurchaseOrderItem
 from goods_receipts.models import GoodsReceipt, GoodsReceiptItem
 from invoices.models import InvoiceItem
@@ -8,7 +14,7 @@ from rest_framework.test import APITestCase, APIClient
 
 from accounts.models import User
 from vendors.models import Vendor
-from invoices.models import Invoice
+from invoices.models import Invoice, InvoiceDocument
 
 
 class InvoiceAPITests(APITestCase):
@@ -411,3 +417,50 @@ class InvoiceMatchingAPITests(APITestCase):
                 status.HTTP_403_FORBIDDEN,
             ],
         )
+
+
+class InvoiceUploadSecurityTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="invoice_upload_user",
+            password="SafeTestPassword!123",
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_tiff_upload_is_accepted_and_document_is_private(self):
+        image_data = BytesIO()
+        Image.new("RGB", (20, 20), "white").save(image_data, format="TIFF")
+        uploaded = SimpleUploadedFile(
+            "sample.tiff",
+            image_data.getvalue(),
+            content_type="image/tiff",
+        )
+
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                with patch(
+                    "invoices.views.process_invoice_document",
+                    return_value={
+                        "extracted_text": "Invoice No: OCR-001",
+                        "extracted_data": {"invoice_number": "OCR-001"},
+                    },
+                ):
+                    response = self.client.post(
+                        "/api/invoice-documents/",
+                        {"file": uploaded},
+                        format="multipart",
+                    )
+
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+                self.assertEqual(response.data["document_type"], "TIFF")
+                document = InvoiceDocument.objects.get(pk=response.data["id"])
+
+                other_user = User.objects.create_user(
+                    username="other_invoice_user",
+                    password="SafeTestPassword!123",
+                )
+                other_client = APIClient()
+                other_client.force_authenticate(user=other_user)
+                document_url = f"/api/invoice-documents/{document.pk}/"
+                self.assertEqual(other_client.get(document_url).status_code, status.HTTP_404_NOT_FOUND)
+                self.assertEqual(self.client.get(document.file.url).status_code, status.HTTP_404_NOT_FOUND)

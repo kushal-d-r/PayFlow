@@ -1,0 +1,233 @@
+
+.vendors-page {
+  padding: 28px;
+  min-height: 100%;
+  background: #f7f8fc;
+  color: #172033;
+}
+
+.vendors-heading,
+.vendors-heading-actions,
+.vendor-toolbar,
+.vendor-modal-heading,
+.vendor-modal-actions,
+.vendor-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vendors-heading { margin-bottom: 24px; }
+.vendors-heading h1 { margin: 0 0 6px; font-size: 26px; }
+.vendors-heading p, .vendor-modal-heading p { margin: 0; color: #697386; }
+
+.vendor-btn {
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vendor-btn:disabled { opacity: .6; cursor: not-allowed; }
+.vendor-btn-primary { background: #3157d5; color: white; }
+.vendor-btn-primary:hover { background: #2446b9; }
+.vendor-btn-secondary { background: white; color: #344054; border: 1px solid #dce1eb; }
+
+.vendor-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 15px;
+  margin-bottom: 22px;
+}
+.vendor-stat-card {
+  background: white;
+  border: 1px solid #e7eaf1;
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.vendor-stat-card > svg { color: #3157d5; }
+.vendor-stat-card span:not(.vendor-dot) { display: block; color: #778196; font-size: 12px; }
+.vendor-stat-card strong { display: block; font-size: 23px; margin-top: 4px; }
+.vendor-dot { width: 10px; height: 10px; border-radius: 50%; }
+.vendor-dot-active { background: #159b69; }
+.vendor-dot-pending { background: #d99b28; }
+.vendor-dot-hold { background: #d04444; }
+
+.vendor-toolbar { margin-bottom: 15px; }
+.vendor-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: white;
+  border: 1px solid #dfe3ec;
+  border-radius: 8px;
+  padding: 0 12px;
+  width: min(420px, 100%);
+}
+.vendor-search svg { color: #8992a3; }
+.vendor-search input { border: 0; outline: 0; width: 100%; padding: 12px 0; }
+.vendor-toolbar select {
+  width: 190px;
+  border: 1px solid #dce1eb;
+  border-radius: 7px;
+  padding: 10px;
+  background: white;
+}
+
+.vendor-table-wrap {
+  background: white;
+  border: 1px solid #e7eaf1;
+  border-radius: 12px;
+  overflow-x: auto;
+}
+.vendor-table { width: 100%; border-collapse: collapse; min-width: 850px; }
+.vendor-table th {
+  padding: 14px;
+  text-align: left;
+  background: #f8f9fc;
+  color: #697386;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.vendor-table td { padding: 14px; border-top: 1px solid #edf0f5; font-size: 13px; }
+.vendor-table td strong { display: block; color: #263b75; }
+.vendor-table td small { display: block; margin-top: 4px; color: #8992a3; }
+
+.vendor-status {
+  display: inline-block;
+  border-radius: 20px;
+  padding: 5px 9px;
+  font-size: 10px;
+  font-weight: 700;
+  background: #edf0f5;
+  color: #596273;
+}
+.vendor-status-active { background: #e2f7ed; color: #08784d; }
+.vendor-status-pending { background: #fff4d8; color: #93630b; }
+.vendor-status-on_hold { background: #ffe8e8; color: #b42318; }
+.vendor-status-inactive { background: #edf0f5; color: #596273; }
+
+.vendor-row-actions { justify-content: flex-start; }
+.vendor-row-actions button {
+  border: 0;
+  background: transparent;
+  color: #647084;
+  cursor: pointer;
+  padding: 5px;
+}
+.vendor-row-actions button:hover { color: #3157d5; }
+.vendor-row-actions select {
+  max-width: 115px;
+  padding: 6px;
+  border: 1px solid #dce1eb;
+  border-radius: 6px;
+  font-size: 11px;
+  background: white;
+}
+
+.vendor-empty { padding: 45px; text-align: center; color: #7b8495; }
+.vendor-alert {
+  padding: 12px 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.vendor-alert span { flex: 1; }
+.vendor-alert-error { background: #fff0f0; color: #a52a2a; }
+.vendor-alert-success { background: #e9f8ef; color: #147343; }
+.vendor-alert button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.vendor-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(15, 23, 42, .55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.vendor-modal {
+  background: white;
+  width: min(850px, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.2);
+}
+.vendor-modal-heading { margin-bottom: 22px; }
+.vendor-modal-heading h2 { margin: 0 0 5px; font-size: 21px; }
+.vendor-modal-heading > button {
+  border: 0;
+  background: transparent;
+  color: #647084;
+  cursor: pointer;
+}
+.vendor-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+}
+.vendor-modal label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #566176;
+}
+.vendor-modal input,
+.vendor-modal select {
+  border: 1px solid #dce1eb;
+  border-radius: 7px;
+  padding: 10px;
+  background: white;
+  width: 100%;
+  color: #172033;
+  min-width: 0;
+}
+.vendor-full-width { grid-column: 1 / -1; }
+.vendor-modal-actions { justify-content: flex-end; margin-top: 22px; }
+
+.vendor-detail-modal { width: min(700px, 100%); }
+.vendor-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.vendor-detail-grid div { padding: 12px; background: #f8f9fc; border-radius: 8px; }
+.vendor-detail-grid span { display: block; color: #8992a3; font-size: 11px; margin-bottom: 5px; }
+.vendor-detail-grid strong { font-size: 13px; overflow-wrap: anywhere; }
+
+@media (max-width: 850px) {
+  .vendor-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .vendors-page { padding: 16px; }
+  .vendors-heading { align-items: flex-start; flex-direction: column; }
+  .vendors-heading-actions { width: 100%; }
+  .vendor-toolbar { align-items: stretch; flex-direction: column; }
+  .vendor-search, .vendor-toolbar select { width: 100%; }
+  .vendor-form-grid, .vendor-detail-grid { grid-template-columns: 1fr; }
+  .vendor-full-width { grid-column: auto; }
+}

@@ -38,27 +38,21 @@ def create_payment(*, validated_data, recorded_by):
             "Payment amount must be greater than zero."
         )
 
-    payment_status = validated_data.get(
-        "status",
-        Payment.Status.PENDING
-    )
+    paid_amount = Payment.objects.filter(
+        invoice=invoice,
+        status=Payment.Status.COMPLETED,
+    ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+    reserved_amount = Payment.objects.filter(
+        invoice=invoice,
+        status__in=[Payment.Status.PENDING, Payment.Status.PROCESSING],
+    ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
 
-    if payment_status == Payment.Status.COMPLETED:
-
-        paid_amount = Payment.objects.filter(
-            invoice=invoice,
-            status=Payment.Status.COMPLETED
-        ).aggregate(
-            total=Sum("amount")
-        )["total"] or Decimal("0.00")
-
-        outstanding = invoice.total_amount - paid_amount
-
-        if amount > outstanding:
-            raise ValidationError(
-                f"Payment exceeds outstanding balance of "
-                f"{outstanding} {invoice.currency}."
-            )
+    outstanding = invoice.total_amount - paid_amount - reserved_amount
+    if amount > outstanding:
+        raise ValidationError(
+            f"Payment exceeds available balance of "
+            f"{max(outstanding, Decimal('0.00'))} {invoice.currency}."
+        )
 
     payment = Payment.objects.create(
         **validated_data,
@@ -92,7 +86,10 @@ def update_invoice_payment_status(invoice):
     if paid_amount >= invoice.total_amount:
         invoice.status = Invoice.Status.PAID
 
-    elif paid_amount > Decimal("0.00"):
+    elif paid_amount > Decimal("0.00") or Payment.objects.filter(
+        invoice=invoice,
+        status__in=[Payment.Status.PENDING, Payment.Status.PROCESSING],
+    ).exists():
         invoice.status = Invoice.Status.PAYMENT_PENDING
 
     else:

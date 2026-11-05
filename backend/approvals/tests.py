@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
+from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase, APIClient
 
@@ -214,6 +215,21 @@ class ApprovalWorkflowTests(APITestCase):
             approval_request.history.first().action,
             ApprovalHistory.Action.SUBMITTED,
         )
+
+    def test_invoice_api_can_submit_matched_invoice_for_approval(self):
+        invoice = self.create_invoice()
+        self.client.force_authenticate(user=self.submitter)
+
+        response = self.client.post(
+            reverse("invoice-submit-for-approval", kwargs={"pk": invoice.id}),
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.status, Invoice.Status.APPROVAL_PENDING)
+        self.assertEqual(ApprovalRequest.objects.filter(invoice=invoice).count(), 1)
 
     def test_approvers_are_assigned_correctly(self):
         invoice = self.create_invoice()

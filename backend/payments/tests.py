@@ -95,6 +95,17 @@ class PaymentAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["status"], "PENDING")
+        self.assertEqual(response.data["due_date"], "2026-11-01")
+        self.assertTrue(response.data["is_overdue"])
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.status, Invoice.Status.PAYMENT_PENDING)
+
+    def test_pending_payments_cannot_reserve_more_than_invoice_balance(self):
+        first = self.create_payment(reference="PAY-RESERVE-001", amount="500.00")
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+
+        second = self.create_payment(reference="PAY-RESERVE-002", amount="700.00")
+        self.assertEqual(second.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_payment_history_is_created(self):
         self.create_payment()
@@ -117,8 +128,6 @@ class PaymentAPITests(APITestCase):
             format="json",
         )
 
-        print("\nPENDING TO PROCESSING RESPONSE:", response.data)
-
         self.assertEqual(
             response.status_code,
             status.HTTP_200_OK,
@@ -138,8 +147,6 @@ class PaymentAPITests(APITestCase):
             format="json",
         )
 
-        print("\nPROCESSING RESPONSE:", processing_response.data)
-
         self.assertEqual(
             processing_response.status_code,
             status.HTTP_200_OK,
@@ -151,8 +158,6 @@ class PaymentAPITests(APITestCase):
             {"new_status": "COMPLETED"},
             format="json",
         )
-
-        print("\nPROCESSING TO COMPLETED RESPONSE:", response.data)
 
         self.assertEqual(
             response.status_code,
@@ -192,8 +197,6 @@ class PaymentAPITests(APITestCase):
             format="json",
         )
 
-        print("\nFULL PAYMENT PROCESSING RESPONSE:", processing_response.data)
-
         self.assertEqual(
             processing_response.status_code,
             status.HTTP_200_OK,
@@ -205,8 +208,6 @@ class PaymentAPITests(APITestCase):
             {"new_status": "COMPLETED"},
             format="json",
         )
-
-        print("\nFULL PAYMENT COMPLETION RESPONSE:", response.data)
 
         self.assertEqual(
             response.status_code,
@@ -252,4 +253,6 @@ class PaymentAPITests(APITestCase):
         self.assertIn("completed_payment_total", response.data)
         self.assertIn("pending_payment_total", response.data)
         self.assertIn("failed_payment_total", response.data)
+        self.assertEqual(response.data["currency_summary"][0]["currency"], "INR")
+        self.assertEqual(response.data["currency_summary"][0]["outstanding_total"], Decimal("1180.00"))
         self.assertIn("outstanding_total", response.data)

@@ -2,6 +2,7 @@
 from decimal import Decimal
 
 from django.db.models import Sum
+from django.utils import timezone
 from rest_framework import serializers
 
 from invoices.models import Invoice
@@ -19,6 +20,12 @@ class PaymentSerializer(serializers.ModelSerializer):
         source="invoice.vendor.legal_name",
         read_only=True
     )
+
+    due_date = serializers.DateField(
+        source="invoice.due_date",
+        read_only=True,
+    )
+    is_overdue = serializers.SerializerMethodField()
 
     recorded_by_username = serializers.CharField(
         source="recorded_by.username",
@@ -39,6 +46,8 @@ class PaymentSerializer(serializers.ModelSerializer):
             "invoice",
             "invoice_number",
             "vendor_name",
+            "due_date",
+            "is_overdue",
             "payment_reference",
             "amount",
             "currency",
@@ -60,6 +69,13 @@ class PaymentSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_is_overdue(self, payment):
+        return (
+            payment.status not in [Payment.Status.COMPLETED, Payment.Status.CANCELLED]
+            and payment.invoice.status != Invoice.Status.PAID
+            and payment.invoice.due_date < timezone.localdate()
+        )
 
     def validate_payment_reference(self, value):
         queryset = Payment.objects.filter(
