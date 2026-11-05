@@ -1,12 +1,11 @@
 
 from decimal import Decimal
-from .models import Payment, PaymentHistory
 
 from django.db.models import Sum
 from rest_framework import serializers
 
 from invoices.models import Invoice
-from .models import Payment
+from .models import Payment, PaymentHistory
 
 
 class PaymentSerializer(serializers.ModelSerializer):
@@ -24,6 +23,13 @@ class PaymentSerializer(serializers.ModelSerializer):
     recorded_by_username = serializers.CharField(
         source="recorded_by.username",
         read_only=True
+    )
+
+    # Explicit DecimalField avoids float-based minimum validation.
+    amount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal("0.01")
     )
 
     class Meta:
@@ -50,7 +56,7 @@ class PaymentSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "recorded_by",
-            "status"
+            "status",
             "created_at",
             "updated_at",
         ]
@@ -61,7 +67,9 @@ class PaymentSerializer(serializers.ModelSerializer):
         )
 
         if self.instance:
-            queryset = queryset.exclude(pk=self.instance.pk)
+            queryset = queryset.exclude(
+                pk=self.instance.pk
+            )
 
         if queryset.exists():
             raise serializers.ValidationError(
@@ -95,27 +103,35 @@ class PaymentSerializer(serializers.ModelSerializer):
         if invoice is None:
             return attrs
 
+        # Only approved or partially paid invoices can receive payments.
         if invoice.status not in [
             Invoice.Status.APPROVED,
             Invoice.Status.PAYMENT_PENDING,
-            Invoice.Status.PAID,
         ]:
             raise serializers.ValidationError({
-                "invoice": "Only approved invoices can receive payments."
+                "invoice": (
+                    "Only approved or payment-pending invoices "
+                    "can receive payments."
+                )
             })
 
         if currency != invoice.currency:
             raise serializers.ValidationError({
-                "currency": "Payment currency must match invoice currency."
+                "currency": (
+                    "Payment currency must match invoice currency."
+                )
             })
 
-        if amount is not None and amount <= 0:
+        if amount is not None and amount <= Decimal("0.00"):
             raise serializers.ValidationError({
                 "amount": "Payment amount must be greater than zero."
             })
 
         # Only completed payments reduce the outstanding balance.
-        if amount is not None and status == Payment.Status.COMPLETED:
+        if (
+            amount is not None
+            and status == Payment.Status.COMPLETED
+        ):
             completed_payments = Payment.objects.filter(
                 invoice=invoice,
                 status=Payment.Status.COMPLETED
@@ -152,6 +168,7 @@ class PaymentHistorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PaymentHistory
+
         fields = [
             "id",
             "payment",
@@ -163,4 +180,5 @@ class PaymentHistorySerializer(serializers.ModelSerializer):
             "comments",
             "created_at",
         ]
+
         read_only_fields = fields
